@@ -22,11 +22,11 @@ import calibration
 
 
 def detect():
-    source, weights, save_txt, imgsz = opt.source, opt.weights,  opt.save_txt, opt.img_size
+    source, weights,  imgsz = arg.source, arg.weights, arg.img_size
 
     # Initialize
     set_logging()
-    device = select_device(opt.device)
+    device = select_device('')
     half = device.type != 'cpu'  # half precision only supported on CUDA
 
     # Load model
@@ -66,8 +66,6 @@ def detect():
 
    # DATALOADER OUTPUT
     for path, img, im0s, vid_cap in dataset:
-        # img[0] = cv2.cvtColor(img[0], cv2.COLOR_BGR2BGRA)
-        # img[1] = cv2.cvtColor(img[1], cv2.COLOR_BGR2BGRA)
 
         im0s[1], im0s[0] = calibration.undistortRectify(im0s[1], im0s[0])
         # print(type(img[0]))
@@ -83,15 +81,14 @@ def detect():
             old_img_h = img.shape[2]
             old_img_w = img.shape[3]
             for i in range(3):
-                model(img, augment=opt.augment)[0]
+                model(img)[0]
 
         # Inference
-
-        pred = model(img, augment=opt.augment)[0]
+        pred = model(img)[0]
 
         # Apply NMS
         pred = non_max_suppression(
-            pred, 0.30, 0.45, classes=opt.classes)
+            pred, 0.30, 0.45)
 
         # Process detections
         det_left = pred[0]  # left cam
@@ -129,9 +126,6 @@ def detect():
             result_left = sorted(
                 result_left, key=lambda x: x["center_point"][0])
 
-            # print("cam : ", p_left, "x1 = %.1f , y1 = %.1f , x2 = %.1f , y2 = %.1f" % (xyxy[0].item(
-            # ), xyxy[1].item(), xyxy[2].item(), xyxy[3].item()))
-
         det_right = pred[1]  # right cam
         i_right = 1
 
@@ -154,9 +148,6 @@ def detect():
                 boundBox_right = int(xywh_right[0] * w), int(xywh_right[1] * h), int(
                     xywh_right[2] * w), int(xywh_right[3] * h)
 
-                # center_point_right = (
-                #     boundBox_right[0] + int(boundBox_right[2] / 2), boundBox_right[1] + int(boundBox_right[3] / 2))
-
                 center_point_right = (boundBox_right[0], boundBox_right[1])
 
                 label = f'{names[int(cls)]} {conf:.2f}'
@@ -164,15 +155,9 @@ def detect():
                 result_right.append(
                     {"class": names[int(cls)], "conf": f'{conf:.2f}', "center_point": center_point_right, "coor": xyxy})
 
-                # plot_one_box(xyxy, im0_right, label=label,
-                #              color=colors[int(cls)], line_thickness=1)
-
             # mengurutkan item dari objek paling kiri
             result_right = sorted(
                 result_right, key=lambda x: x["center_point"][0])
-
-            # print("Jarak : ",  str(depth) + " cm")
-
 
         if len(det_left) <= 0 | len(det_right) <= 0:
             print("TRACKING LOST")
@@ -194,8 +179,8 @@ def detect():
                 plot_one_box(item_right["coor"], im0_right, label=label,
                              color=colors[int(cls)], line_thickness=1)
 
-        cv2.imshow(str(p_left), im0_left)
-        cv2.imshow(str(p_right), im0_right)
+        cv2.imshow(str("Webcam Kiri"), im0_left)
+        cv2.imshow(str("Webcam Kanan"), im0_right)
 
         result_right.clear()  # reset isi dari array
         result_left.clear()  # reset isi dari array
@@ -209,41 +194,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str,
                         default='best.pt', help='model.pt path(s)')
-    parser.add_argument('--download', action='store_true',
-                        help='download model weights automatically')
-    parser.add_argument('--no-download', dest='download', action='store_false')
-    # file/folder, 0 for webcam
     parser.add_argument('--source', type=str,
                         default='inference/images', help='source')
     parser.add_argument('--img-size', type=int, default=640,
                         help='inference size (pixels)')
-    parser.add_argument('--device', default='',
-                        help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--save-txt', action='store_true',
-                        help='save results to *.txt')
-    parser.add_argument('--save-conf', action='store_true',
-                        help='save confidences in --save-txt labels')
-    parser.add_argument('--nosave', action='store_true',
-                        help='do not save images/videos')
-    parser.add_argument('--classes', nargs='+', type=int,
-                        help='filter by class: --class 0, or --class 0 2 3')
-    parser.add_argument('--augment', action='store_true',
-                        help='augmented inference')
-    parser.add_argument('--project', default='runs/detect',
-                        help='save results to project/name')
-    parser.add_argument('--name', default='object_tracking',
-                        help='save results to project/name')
-    parser.add_argument('--exist-ok', action='store_true',
-                        help='existing project/name ok, do not increment')
-    parser.set_defaults(download=True)
-    opt = parser.parse_args()
-    print(opt)
+    # parser.add_argument('--device', default='',
+    #                     help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
 
-    #check_requirements(exclude=('pycocotools', 'thop'))
-    if opt.download and not os.path.exists(str(opt.weights)):
-        print('Model weights not found. Attempting to download now...')
-        download('./')
+    arg = parser.parse_args()
+    print(arg)
 
     with torch.no_grad():
         detect()
-        strip_optimizer(opt.weights)
+        strip_optimizer(arg.weights)
