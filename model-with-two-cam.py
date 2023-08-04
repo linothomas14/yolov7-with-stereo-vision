@@ -1,6 +1,4 @@
 import argparse
-import time
-import os
 from pathlib import Path
 import cv2
 import torch
@@ -8,21 +6,43 @@ import torch.backends.cudnn as cudnn
 from numpy import random
 from random import randint
 from models.experimental import attempt_load
-from utils.datasets import LoadStreams, LoadImages
-from utils.general import check_img_size, check_requirements, \
-    check_imshow, non_max_suppression, apply_classifier, \
-    scale_coords, xyxy2xywh, strip_optimizer, set_logging, \
-    increment_path
+from utils.datasets import LoadStreams
+from utils.general import check_img_size, non_max_suppression, scale_coords, xyxy2xywh, strip_optimizer, set_logging
+
 from utils.plots import plot_one_box
-from utils.torch_utils import select_device, load_classifier, time_synchronized, TracedModel
-from utils.download_weights import download
+from utils.torch_utils import select_device
 
 import triangulation as tri
 import calibration
 
+from tkinter import *
+from PIL import Image, ImageTk
+
 
 def detect():
     source, weights,  imgsz = arg.source, arg.weights, arg.img_size
+
+    root = Tk()
+    root.title("SISTEM KLASIFIKASI KEMATANGAN BUAH PEPAYA DAN ESTIMASI JARAK")
+
+    title_label = Label(
+        root, text="SISTEM KLASIFIKASI KEMATANGAN BUAH PEPAYA DAN ESTIMASI JARAK", wraplength=1000, font=("Helvetica", 20))
+    title_label.grid(row=0, column=0, columnspan=2)
+
+    label1 = Label(root, pady=10, padx=10)
+    label1.grid(row=1, column=0)
+
+    label2 = Label(root, pady=10, padx=10)
+    label2.grid(row=1, column=1)
+
+    # Stereo vision setup parameters
+    B = 8  # Distance between the cameras [cm]
+    alpha = 75  # Camera field of view in the horizontal plane [degrees]
+
+    center_point_left = 0, 0  # titik tengah dari objek yang dideteksi
+    center_point_right = 0, 0
+    result_left = []  # menampung hasil deteksi dari kamera kiri
+    result_right = []  # menampung hasil deteksi dari kamera kanan
 
     # Initialize
     set_logging()
@@ -37,17 +57,6 @@ def detect():
     if half:
         model.half()  # to FP16
 
-    # Stereo vision setup parameters
-    frame_rate = 120  # Camera frame rate (maximum at 120 fps)
-    B = 8  # Distance between the cameras [cm]
-    f = 3.6  # Camera lens's focal length [mm]
-    alpha = 75  # Camera field of view in the horizontal plane [degrees]
-
-    center_point_left = 0, 0  # titik tengah dari objek yang dideteksi
-    center_point_right = 0, 0
-
-    result_left = []  # menampung hasil deteksi dari kamera kiri
-    result_right = []  # menampung hasil deteksi dari kamera kanan
     # Set Dataloader
 
     cudnn.benchmark = True  # set True to speed up constant image size inference
@@ -55,7 +64,7 @@ def detect():
 
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
-    colors = [[random.randint(0, 255) for _ in range(3)] for _ in names]
+    colors = [[252, 123, 3], [3, 64, 1]]
 
     # Run inference
     if device.type != 'cpu':
@@ -67,21 +76,15 @@ def detect():
    # DATALOADER OUTPUT
     for path, img, im0s, vid_cap in dataset:
 
-        im0s[1], im0s[0] = calibration.undistortRectify(im0s[1], im0s[0])
-        # print(type(img[0]))
+        # Implement Kalibrasi
+        # im0s[1], im0s[0] = calibration.undistortRectify(im0s[1], im0s[0])
+        # img[1], img[0] = calibration.undistortRectify(img[1], img[0])
+
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
         if img.ndimension() == 3:
             img = img.unsqueeze(0)
-
-        # Warmup
-        if device.type != 'cpu' and (old_img_b != img.shape[0] or old_img_h != img.shape[2] or old_img_w != img.shape[3]):
-            old_img_b = img.shape[0]
-            old_img_h = img.shape[2]
-            old_img_w = img.shape[3]
-            for i in range(3):
-                model(img)[0]
 
         # Inference
         pred = model(img)[0]
@@ -91,11 +94,11 @@ def detect():
             pred, 0.30, 0.45)
 
         # Process detections
-        det_left = pred[0]  # left cam
         i_left = 0
+        det_left = pred[i_left]  # left cam
 
-        p_left, s_left, im0_left = path[i_left], '%g: ' % i_left, im0s[i_left].copy(
-        )
+        im0_left = im0s[i_left].copy()
+
         gn_left = torch.tensor(im0_left.shape)[[1, 0, 1, 0]]
 
         h, w, c = im0_left.shape
@@ -113,14 +116,23 @@ def detect():
 
                 xywh_left = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)
                                        ) / gn_left).view(-1).tolist()
+                """
+                xywh_left dalam skala 0-1
+                [0] = koordinat tengah x objek
+                [1] = koordinat tengah y objek
+                [2] = lebar objek
+                [3] = tinggi objek
+                """
 
                 boundBox_left = int(xywh_left[0] * w), int(xywh_left[1] * h), int(
                     xywh_left[2] * w), int(xywh_left[3] * h)
-
+                print(xyxy[0], xyxy[1],
+                      xyxy[2], xyxy[3])
+                # tengah X dan tengah Y
                 center_point_left = (boundBox_left[0], boundBox_left[1])
 
                 result_left.append(
-                    {"class": names[int(cls)], "conf": f'{conf:.2f}', "center_point": center_point_left, "coor": xyxy})
+                    {"class": names[int(cls)], "conf": f'{conf:.2f}', "center_point": center_point_left, "coor": xyxy, "color": colors[int(cls)]})
 
             # mengurutkan item dari objek paling kiri
             result_left = sorted(
@@ -153,7 +165,7 @@ def detect():
                 label = f'{names[int(cls)]} {conf:.2f}'
 
                 result_right.append(
-                    {"class": names[int(cls)], "conf": f'{conf:.2f}', "center_point": center_point_right, "coor": xyxy})
+                    {"class": names[int(cls)], "conf": f'{conf:.2f}', "center_point": center_point_right, "coor": xyxy, "color": colors[int(cls)]})
 
             # mengurutkan item dari objek paling kiri
             result_right = sorted(
@@ -170,17 +182,27 @@ def detect():
         else:
             for item_left, item_right in zip(result_left, result_right):
                 depth = tri.find_depth(
-                    (item_right["center_point"]), (item_left["center_point"]), im0_right, im0_left, B, f, alpha)
+                    (item_right["center_point"]), (item_left["center_point"]), im0_right, im0_left, B, alpha)
 
                 item_right["depth"] = depth
 
                 label = f'{item_right["class"]} {item_right["conf"]}, {item_right["depth"]} cm'
 
                 plot_one_box(item_right["coor"], im0_right, label=label,
-                             color=colors[int(cls)], line_thickness=1)
+                             color=item_right["color"], line_thickness=1)
 
-        cv2.imshow(str("Webcam Kiri"), im0_left)
-        cv2.imshow(str("Webcam Kanan"), im0_right)
+        # TAMPILKAN KE LAYAR
+        frames = [im0_left, im0_right]
+        labels = [label1, label2]
+        for frame, label in zip(frames, labels):
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            image = Image.fromarray(frame)
+            photo = ImageTk.PhotoImage(image)
+            label.configure(image=photo)
+            label.image = photo
+
+        root.update()
 
         result_right.clear()  # reset isi dari array
         result_left.clear()  # reset isi dari array

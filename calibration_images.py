@@ -9,7 +9,10 @@ num = 0
 
 while cap.isOpened():
 
+    # Left Cam
     succes1, img = cap.read()
+
+    # Right Cam
     succes2, img2 = cap2.read()
 
     k = cv2.waitKey(1)
@@ -23,5 +26,5 @@ while cap.isOpened():
                     str(num) + '.png', img2)
         print("images saved!")
         num += 1
-    cv2.imshow('Img 1', img)
-    cv2.imshow('Img 2', img2)
+    cv2.imshow('Left Cam', img)
+    cv2.imshow('Right Cam', img2)
